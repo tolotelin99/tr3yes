@@ -1,0 +1,11 @@
+# Binarios compilados
+*.exe
+tr3yes
+
+# Bases de datos forenses y logs de red
+*.json
+*.csv
+*.log
+
+# Archivos de entorno y configuraciones locales
+.env
