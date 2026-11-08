@@ -726,45 +726,24 @@ func obtenerTokenSeguro() string {
 	return hex.EncodeToString(tokenBytes)
 }
 
-func main() {
-	host := localHostIP
-	port := "8443"
-	dbPath := "tr3yes_splunk_audit.json"
+func aplicarCabeceras(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
+}
 
-	serverToken = obtenerTokenSeguro()
-	csrfBytes := make([]byte, 16)
-	rand.Read(csrfBytes)
-	csrfToken = hex.EncodeToString(csrfBytes)
+func validarSesion(r *http.Request, serverToken string) bool {
+	c, err := r.Cookie("tr3yes_session")
+	return err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(serverToken)) == 1
+}
 
-	var enginePaused bool
-	var engineMu sync.Mutex
+func validarCSRF(r *http.Request, csrfToken string) bool {
+	clientToken := r.Header.Get("X-CSRF-Token")
+	return subtle.ConstantTimeCompare([]byte(clientToken), []byte(csrfToken)) == 1
+}
 
-	go func() {
-		ticker := time.NewTicker(3 * time.Second)
-		for range ticker.C {
-			monitorearRedReal(dbPath, &enginePaused, &engineMu)
-		}
-	}()
-
-	go monitorearTshark(dbPath, &enginePaused, &engineMu)
-	go monitorearTcpdump(dbPath, &enginePaused, &engineMu)
-
-	aplicarCabeceras := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
-	}
-
-	validarSesion := func(r *http.Request) bool {
-		c, err := r.Cookie("tr3yes_session")
-		return err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(serverToken)) == 1
-	}
-	validarCSRF := func(r *http.Request) bool {
-		clientToken := r.Header.Get("X-CSRF-Token")
-		return subtle.ConstantTimeCompare([]byte(clientToken), []byte(csrfToken)) == 1
-	}
-
+func configurarRutasHTTP(dbPath string) {
 	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		ip := r.RemoteAddr
@@ -817,7 +796,7 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) {
+		if !validarSesion(r, serverToken) {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
@@ -831,6 +810,7 @@ func main() {
 		w.Header().Set(headerContentType, "text/css; charset=utf-8")
 		w.Write([]byte(uiCSS))
 	})
+
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		w.Header().Set(headerContentType, "application/javascript; charset=utf-8")
@@ -839,7 +819,7 @@ func main() {
 
 	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) {
+		if !validarSesion(r, serverToken) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -854,7 +834,7 @@ func main() {
 
 	http.HandleFunc("/api/soar/enrich", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -895,7 +875,7 @@ func main() {
 
 	http.HandleFunc("/api/soar/block-ip", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -936,7 +916,7 @@ func main() {
 
 	http.HandleFunc("/api/event/status", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -954,7 +934,7 @@ func main() {
 
 	http.HandleFunc("/api/event/delete", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -973,7 +953,7 @@ func main() {
 
 	http.HandleFunc("/api/events/clear", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -985,17 +965,45 @@ func main() {
 
 	http.HandleFunc("/api/engine/toggle", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
+		var engineMu sync.Mutex
 		engineMu.Lock()
+		var enginePaused bool
 		enginePaused = !enginePaused
 		p := enginePaused
 		engineMu.Unlock()
 		w.Header().Set(headerContentType, "application/json")
 		json.NewEncoder(w).Encode(EngineToggleResponse{Paused: p})
 	})
+}
+
+func main() {
+	host := localHostIP
+	port := "8443"
+	dbPath := "tr3yes_splunk_audit.json"
+
+	serverToken = obtenerTokenSeguro()
+	csrfBytes := make([]byte, 16)
+	rand.Read(csrfBytes)
+	csrfToken = hex.EncodeToString(csrfBytes)
+
+	var enginePaused bool
+	var engineMu sync.Mutex
+
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		for range ticker.C {
+			monitorearRedReal(dbPath, &enginePaused, &engineMu)
+		}
+	}()
+
+	go monitorearTshark(dbPath, &enginePaused, &engineMu)
+	go monitorearTcpdump(dbPath, &enginePaused, &engineMu)
+
+	configurarRutasHTTP(dbPath)
 
 	tlsCert := generarCertificadoTLS()
 	server := &http.Server{
