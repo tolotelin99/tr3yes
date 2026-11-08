@@ -30,6 +30,16 @@ import (
 	"time"
 )
 
+// Constantes globales para eliminar duplicación de literales (Mantenibilidad SonarQube)
+const (
+	HeaderContentType = "Content-Type"
+	ContentTypeJSON   = "application/json; charset=utf-8"
+	ContentTypeHTML   = "text/html; charset=utf-8"
+	ContentTypeCSS    = "text/css; charset=utf-8"
+	ContentTypeJS     = "application/javascript; charset=utf-8"
+	LocalhostIP       = "127.0.0.1"
+)
+
 type Incidente struct {
 	ID          string `json:"id"`
 	Timestamp   string `json:"timestamp"`
@@ -487,7 +497,7 @@ func monitorearRedReal(dbPath string, paused *bool, mu *sync.Mutex) {
 			remoto := campos[2]; partes := strings.Split(remoto, ":")
 			if len(partes) != 2 { continue }
 			ipRemota := partes[0]; puertoRemoto := partes[1]
-			if ipRemota == "127.0.0.1" || ipRemota == "0.0.0.0" { continue }
+			if ipRemota == LocalhostIP || ipRemota == "0.0.0.0" { continue }
 			if !conexionesVistas[ipRemota] {
 				conexionesVistas[ipRemota] = true
 				go func(ip, puerto string) {
@@ -521,7 +531,7 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 		campos := strings.Fields(scanner.Text())
 		if len(campos) >= 2 {
 			ipDest := campos[0]; urlDominio := campos[1]
-			if ipDest == "127.0.0.1" { continue } 
+			if ipDest == LocalhostIP { continue } 
 			llaveUnica := ipDest + "-" + urlDominio
 			if !tsharkVistos[llaveUnica] {
 				tsharkVistos[llaveUnica] = true
@@ -550,7 +560,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 		mu.Lock(); p := *paused; mu.Unlock(); if p { continue }
 		linea := scanner.Text()
 		
-		if !strings.Contains(linea, "127.0.0.1") {
+		if !strings.Contains(linea, LocalhostIP) {
 			longitudMaxima := 150
 			if len(linea) < longitudMaxima { longitudMaxima = len(linea) }
 			registrarIncidente(dbPath, Incidente{ ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Tcpdump", EventType: "Captura de Paquete en Crudo", MitreID: "T1040 (Network Sniffing)", Description: fmt.Sprintf("[TCPDUMP RAW] %s", linea[:longitudMaxima]), Status: "Nuevo" })
@@ -560,7 +570,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 
 func generarCertificadoTLS() tls.Certificate {
 	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	template := x509.Certificate{ SerialNumber: big.NewInt(1), Subject: pkix.Name{ Organization: []string{"tr3yes Security Operations"}, CommonName: "localhost" }, NotBefore: time.Now(), NotAfter: time.Now().Add(365 * 24 * time.Hour), KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, DNSNames: []string{"localhost"}, BasicConstraintsValid: true }
+	template := x509.Certificate{ SerialNumber: big.NewInt(1), Subject: pkix.Name{ Organization: []string{"tr3yes Security Operations"}, CommonName: "localhost" }, NotBefore: time.Now(), NotAfter: time.Now().Add(365 * 24 * time.Hour), KeyUsage: x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IPAddresses: []net.IP{net.ParseIP(LocalhostIP)}, DNSNames: []string{"localhost"}, BasicConstraintsValid: true }
 	derBytes, _ := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	privBytes, _ := x509.MarshalECPrivateKey(priv)
 	pemCert := fmt.Sprintf("-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----\n", encodeBase64(derBytes))
@@ -590,7 +600,7 @@ func obtenerTokenSeguro() string {
 }
 
 func main() {
-	host := "127.0.0.1"
+	host := LocalhostIP
 	port := "8443"
 	dbPath := "tr3yes_splunk_audit.json"
 
@@ -622,14 +632,14 @@ func main() {
 		aplicarCabeceras(w, r)
 		ip := r.RemoteAddr
 		if strings.Contains(ip, ":") { ip, _, _ = net.SplitHostPort(ip) }
-		if ip == "" { ip = "127.0.0.1" }
+		if ip == "" { ip = LocalhostIP }
 
 		attemptsMutex.Lock()
 		attempt, exists := loginAttempts[ip]
 		if exists && attempt.lockUntil.After(time.Now()) {
 			tiempoRestante := int(time.Until(attempt.lockUntil).Seconds())
 			attemptsMutex.Unlock()
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set(HeaderContentType, ContentTypeHTML)
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte(fmt.Sprintf(`<body style="background:#020205;color:#ff0055;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="background:#080314;border:1px solid #ff0055;padding:30px;border-radius:4px;text-align:center;"><h2>[!] BLOQUEO CYBERPUNK (BRUTE FORCE)</h2><p>Acceso denegado temporalmente. Inténtalo en %ds.</p><br><a href="/login" style="color:#00f0ff;">Volver al Gateway</a></div></body>`, tiempoRestante)))
 			return
@@ -651,25 +661,26 @@ func main() {
 				attemptsMutex.Unlock()
 			}
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8"); w.Write([]byte(loginHTML))
+		w.Header().Set(HeaderContentType, ContentTypeHTML)
+		w.Write([]byte(loginHTML))
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		if !validarSesion(r) { http.Redirect(w, r, "/login", http.StatusSeeOther); return }
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set(HeaderContentType, ContentTypeHTML)
 		htmlFinal := strings.Replace(indexHTML, "{{CSRF_TOKEN}}", csrfToken, 1)
 		w.Write([]byte(htmlFinal))
 	})
 
-	http.HandleFunc("/ui.css", func(w http.ResponseWriter, r *http.Request) { aplicarCabeceras(w, r); w.Header().Set("Content-Type", "text/css; charset=utf-8"); w.Write([]byte(uiCSS)) })
-	http.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) { aplicarCabeceras(w, r); w.Header().Set("Content-Type", "application/javascript; charset=utf-8"); w.Write([]byte(appJS)) })
+	http.HandleFunc("/ui.css", func(w http.ResponseWriter, r *http.Request) { aplicarCabeceras(w, r); w.Header().Set(HeaderContentType, ContentTypeCSS); w.Write([]byte(uiCSS)) })
+	http.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) { aplicarCabeceras(w, r); w.Header().Set(HeaderContentType, ContentTypeJS); w.Write([]byte(appJS)) })
 
 	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		if !validarSesion(r) { http.Error(w, "Unauthorized", http.StatusUnauthorized); return }
 		if r.Method != http.MethodGet { w.Header().Set("Allow", "GET"); http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed); return }
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
 		json.NewEncoder(w).Encode(leerIncidentes(dbPath))
 	})
 
@@ -681,13 +692,13 @@ func main() {
 		
 		parsedIP := net.ParseIP(req.IP)
 		if parsedIP == nil {
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(HeaderContentType, ContentTypeJSON)
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Formato de IP inválido."})
 			return
 		}
 		
 		vtKey := os.Getenv("VT_API_KEY")
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
 		if vtKey == "" { json.NewEncoder(w).Encode(map[string]interface{}{"error": "OPSEC: Variable VT_API_KEY no configurada."}); return }
 
 		url := "https://www.virustotal.com/api/v3/ip-addresses/" + parsedIP.String()
@@ -777,7 +788,7 @@ func main() {
 		aplicarCabeceras(w, r)
 		if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost { http.Error(w, "Forbidden", http.StatusForbidden); return }
 		engineMu.Lock(); enginePaused = !enginePaused; p := enginePaused; engineMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(HeaderContentType, ContentTypeJSON)
 		json.NewEncoder(w).Encode(map[string]bool{"paused": p})
 	})
 
