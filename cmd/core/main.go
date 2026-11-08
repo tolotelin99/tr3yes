@@ -2,24 +2,16 @@ package main
 
 import (
 	"bufio"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
 )
@@ -37,125 +29,77 @@ type Incidente struct {
 	Status      string `json:"status"`
 }
 
-const (
-	localHostIP       = "127.0.0.1"
-	headerContentType = "Content-Type"
-	contentTypeHTML   = "text/html; charset=utf-8"
-	netstatPath       = `C:\Windows\System32\netstat.exe`
-	tsharkPath        = `C:\Program Files\Wireshark\tshark.exe`
-)
-
 var (
-	dbMutex          sync.Mutex
-	serverToken      string
-	csrfToken        string
-	conexionesVistas = make(map[string]bool)
+	dbMutex     sync.Mutex
+	serverToken string
 )
-
-func registrarIncidente(dbPath string, inc Incidente) {
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-	var lista []Incidente
-	if file, err := os.Open(dbPath); err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			var item Incidente
-			if err := json.Unmarshal(scanner.Bytes(), &item); err == nil {
-				lista = append(lista, item)
-			}
-		}
-		file.Close()
-	}
-	lista = append(lista, inc)
-	if len(lista) > 500 {
-		lista = lista[len(lista)-500:]
-	}
-	if file, err := os.OpenFile(dbPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
-		for _, item := range lista {
-			b, _ := json.Marshal(item)
-			file.Write(b)
-			file.WriteString("\n")
-		}
-		file.Close()
-	}
-}
 
 func leerIncidentes(dbPath string) []Incidente {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
 	var lista []Incidente
-	if file, err := os.Open(dbPath); err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			var item Incidente
-			if err := json.Unmarshal(scanner.Bytes(), &item); err == nil {
-				lista = append(lista, item)
-			}
-		}
-		file.Close()
+	file, err := os.Open(dbPath)
+	if err != nil {
+		return []Incidente{}
 	}
-	if lista == nil {
-		lista = []Incidente{}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var item Incidente
+		if json.Unmarshal(scanner.Bytes(), &item) == nil {
+			lista = append(lista, item)
+		}
 	}
 	return lista
 }
 
-func generarIDUnico() string {
-	b := make([]byte, 4)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
-func aplicarCabeceras(w http.ResponseWriter, r *http.Request) {
+func aplicarCabeceras(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
 }
 
-func validarSesion(r *http.Request) bool {
-	c, err := r.Cookie("tr3yes_session")
-	return err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(serverToken)) == 1
-}
+func main() {
+	serverToken = "tr3yes_sec_2026"
+	dbPath := "tr3yes_splunk_audit.json"
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	aplicarCabeceras(w, r)
-	if r.Method == http.MethodPost {
-		r.ParseForm()
-		if subtle.ConstantTimeCompare([]byte(r.FormValue("token")), []byte(serverToken)) == 1 {
+	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		aplicarCabeceras(w)
+		if r.Method == http.MethodPost && subtle.ConstantTimeCompare([]byte(r.FormValue("token")), []byte(serverToken)) == 1 {
 			http.SetCookie(w, &http.Cookie{Name: "tr3yes_session", Value: serverToken, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-	}
-	w.Header().Set(headerContentType, contentTypeHTML)
-	loginBytes, _ := staticFiles.ReadFile("static/login.html")
-	w.Write(loginBytes)
-}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if loginBytes, err := staticFiles.ReadFile("static/login.html"); err == nil {
+			w.Write(loginBytes)
+		}
+	})
 
-func handleDashboard(w http.ResponseWriter, r *http.Request) {
-	aplicarCabeceras(w, r)
-	if !validarSesion(r) {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	w.Header().Set(headerContentType, contentTypeHTML)
-	indexBytes, _ := staticFiles.ReadFile("static/index.html")
-	w.Write(indexBytes)
-}
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		aplicarCabeceras(w)
+		c, err := r.Cookie("tr3yes_session")
+		if err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(serverToken)) != 1 {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if indexBytes, err := staticFiles.ReadFile("static/index.html"); err == nil {
+			w.Write(indexBytes)
+		}
+	})
 
-func main() {
-	serverToken = "tr3yes_sec_2026"
-	csrfBytes := make([]byte, 16)
-	rand.Read(csrfBytes)
-	csrfToken = hex.EncodeToString(csrfBytes)
+	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
+		aplicarCabeceras(w)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		json.NewEncoder(w).Encode(leerIncidentes(dbPath))
+	})
 
-	http.HandleFunc("/login", handleLogin)
-	http.HandleFunc("/", handleDashboard)
-	
 	server := &http.Server{
-		Addr: "127.0.0.1:8443",
-		ReadTimeout: 5 * time.Second,
+		Addr:         "127.0.0.1:8443",
+		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
 
