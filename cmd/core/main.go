@@ -30,7 +30,7 @@ import (
 	"time"
 )
 
-// Constantes globales para eliminar duplicación de literales (Mantenibilidad SonarQube)
+// Constantes globales para eliminar duplicación de literales y asegurar rutas absolutas
 const (
 	HeaderContentType = "Content-Type"
 	ContentTypeJSON   = "application/json; charset=utf-8"
@@ -38,6 +38,7 @@ const (
 	ContentTypeCSS    = "text/css; charset=utf-8"
 	ContentTypeJS     = "application/javascript; charset=utf-8"
 	LocalhostIP       = "127.0.0.1"
+	NetshPath         = `C:\Windows\System32\netsh.exe`
 )
 
 type Incidente struct {
@@ -73,7 +74,7 @@ const loginHTML = `<!DOCTYPE html>
     <meta charset="UTF-8">
     <title>tr3yes — CYBERPUNK AUTH GATEWAY</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap](https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap)');
         body { background: #020205; color: #ff007f; font-family: 'Share Tech Mono', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-shadow: 0 0 6px rgba(255,0,127,0.4); }
         .login-box { background: #080314; border: 1px solid #ff007f; padding: 35px; border-radius: 4px; width: 420px; box-shadow: 0 0 25px rgba(255,0,127,0.25), inset 0 0 15px rgba(0,240,255,0.05); }
         h2 { color: #00f0ff; margin-bottom: 10px; font-size: 19px; text-align: center; text-shadow: 0 0 8px rgba(0,240,255,0.6); }
@@ -192,7 +193,7 @@ const indexHTML = `<!DOCTYPE html>
 </html>`
 
 const uiCSS = `
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+@import url('[https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap](https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap)');
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #020205; color: #00f0ff; font-family: 'Share Tech Mono', monospace; padding: 20px; transition: background 0.3s ease; text-shadow: 0 0 3px rgba(0, 240, 255, 0.3); }
 body.panic { background: #380202 !important; color: #ff0055 !important; text-shadow: 0 0 6px rgba(255, 0, 85, 0.6) !important; }
@@ -386,7 +387,7 @@ async function soarEnrichIP() {
         if (res.ok) {
             const data = await res.json();
             if (data.error) { statusMsg.style.color = '#fbbf24'; statusMsg.textContent = '[!] ' + data.error; } 
-            else { statusMsg.style.color = parseInt(data.malicious) > 0 ? '#ff0055' : '#00ff66'; statusMsg.innerHTML = data.message + ' <a href="https://www.virustotal.com/gui/ip-address/' + targetIP + '" target="_blank" style="color:#00f0ff; text-decoration:underline;">[Ver Reporte]</a>'; }
+            else { statusMsg.style.color = parseInt(data.malicious) > 0 ? '#ff0055' : '#00ff66'; statusMsg.innerHTML = data.message + ' <a href="[https://www.virustotal.com/gui/ip-address/](https://www.virustotal.com/gui/ip-address/)' + targetIP + '" target="_blank" style="color:#00f0ff; text-decoration:underline;">[Ver Reporte]</a>'; }
         } else { statusMsg.style.color = '#ff0055'; statusMsg.textContent = '[!] Error HTTP al conectar con el backend SOAR.'; }
     } catch (e) { statusMsg.style.color = '#ff0055'; statusMsg.textContent = '[!] Fallo de red interno.'; }
 }
@@ -701,7 +702,7 @@ func main() {
 		w.Header().Set(HeaderContentType, ContentTypeJSON)
 		if vtKey == "" { json.NewEncoder(w).Encode(map[string]interface{}{"error": "OPSEC: Variable VT_API_KEY no configurada."}); return }
 
-		url := "https://www.virustotal.com/api/v3/ip-addresses/" + parsedIP.String()
+		url := "[https://www.virustotal.com/api/v3/ip-addresses/](https://www.virustotal.com/api/v3/ip-addresses/)" + parsedIP.String()
 		client := &http.Client{Timeout: 10 * time.Second}
 		httpReq, _ := http.NewRequest("GET", url, nil)
 		httpReq.Header.Add("x-apikey", vtKey)
@@ -738,8 +739,10 @@ func main() {
 			
 			ruleNameIn := fmt.Sprintf("TR3YES_BLOCK_IN_%s", safeIP)
 			ruleNameOut := fmt.Sprintf("TR3YES_BLOCK_OUT_%s", safeIP)
-			exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run()
-			exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run()
+			
+			// Uso de ruta absoluta NetshPath para satisfacer el análisis estático de seguridad de SonarQube
+			exec.Command(NetshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run()
+			exec.Command(NetshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run()
 		}
 		
 		lista := leerIncidentes(dbPath)
@@ -797,7 +800,7 @@ func main() {
 
 	fmt.Println("==========================================================")
 	fmt.Println("[+] TR3YES SOC (CYBERPUNK EDITION // TRIPLE SENSOR ACTIVE)")
-	fmt.Println("[+] URL DE ACCESO: https://127.0.0.1:8443/")
+	fmt.Println("[+] URL DE ACCESO: [https://127.0.0.1:8443/](https://127.0.0.1:8443/)")
 	if os.Getenv("TR3YES_TOKEN") != "" { fmt.Println("[+] TOKEN CARGADO DESDE VARIABLE DE ENTORNO") } else { fmt.Printf("[+] TOKEN EFÍMERO EN RAM (COPIAR): %s\n", serverToken) }
 	fmt.Println("==========================================================")
 	log.Fatal(server.ListenAndServeTLS("", ""))
