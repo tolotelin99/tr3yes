@@ -431,7 +431,11 @@ func registrarIncidente(dbPath string, inc Incidente) {
 	}
 
 	lista = append(lista, inc)
-	if len(lista) > 1000 { lista = lista[len(lista)-1000:] }
+	
+	// Rotación de logs: al llegar a 1000 registros, descarta los 500 más viejos y conserva los 500 más recientes
+	if len(lista) >= 1000 {
+		lista = lista[len(lista)-500:]
+	}
 
 	if file, err := os.OpenFile(dbPath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600); err == nil {
 		for _, item := range lista { b, _ := json.Marshal(item); file.Write(b); file.WriteString("\n") }
@@ -504,11 +508,11 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 	args := []string{"-l", "-Y", "tls.handshake.type == 1", "-T", "fields", "-e", "ip.dst", "-e", "tls.handshake.extensions_server_name"}
 	if iface != "" { args = append([]string{"-i", iface}, args...) }
 	
-	cmd := exec.Command("tshark", args...)
+	cmd := exec.Command(`C:\Program Files\Wireshark\tshark.exe`, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil { return }
 	
-	if err := cmd.Start(); err != nil { log.Println("[!] ADVERTENCIA: Tshark no detectado en el PATH."); return }
+	if err := cmd.Start(); err != nil { log.Println("[!] ADVERTENCIA: Tshark no detectado en C:\\Program Files\\Wireshark."); return }
 	log.Printf("[+] 🦈 Sensor TSHARK CYBERPUNK (Interfaz: %s): Escuchando URLs...", iface)
 	
 	scanner := bufio.NewScanner(stdout)
@@ -534,7 +538,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 	args := []string{"-l", "-n", "-f", "port 53"}
 	if iface != "" { args = append([]string{"-i", iface}, args...) }
 
-	cmd := exec.Command("tshark", args...)
+	cmd := exec.Command(`C:\Program Files\Wireshark\tshark.exe`, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil { return }
 	

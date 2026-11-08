@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{CSRF_TOKEN}}">
+    <title>tr3yes — Tactical Operations Center</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #050b14; color: #00ff66; font-family: 'Share Tech Mono', monospace; padding: 20px; }
+        body.panic { background: #660000; color: #ffffff; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #00ff66; padding-bottom: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        .topbar-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .ascii-banner { color: #00ff66; font-size: 8px; line-height: 9px; font-weight: bold; letter-spacing: 1px; margin-bottom: 6px; }
+        .subtitle { color: #00ffff; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+        .badge-live { background: rgba(0, 255, 102, 0.2); color: #00ff66; border: 1px solid #00ff66; padding: 5px 10px; border-radius: 2px; font-weight: bold; font-size: 11px; }
+        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+        .kpi-card { background: #0a1120; border: 1px solid #00ff66; border-left: 4px solid #00ff66; padding: 14px; border-radius: 2px; }
+        .kpi-card.tcpdump { border-left-color: #00ffff; }
+        .kpi-card.tshark { border-left-color: #38bdf8; }
+        .kpi-card.host { border-left-color: #34d399; }
+        .kpi-title { display: block; font-size: 10px; color: #00ffff; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+        .kpi-value { font-size: 24px; font-weight: bold; color: #ffffff; }
+        .controls { display: flex; gap: 8px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; }
+        .btn { background: #0a1120; color: #00ff66; border: 1px solid #00ff66; padding: 6px 10px; border-radius: 2px; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn.active, .btn:hover { background: #00ff66; color: #000000; border-color: #00ff66; }
+        #search-box { flex: 1; min-width: 220px; background: #0a1120; color: #00ff66; border: 1px solid #00ff66; padding: 6px 10px; border-radius: 2px; font-family: inherit; font-size: 12px; outline: none; }
+        #search-box:focus { border-color: #00ffff; }
+        .table-wrap { background: #0a1120; border: 1px solid #00ff66; border-radius: 2px; overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th { background: #0e1726; color: #00ffff; text-align: left; padding: 10px 12px; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #00ff66; letter-spacing: 1px; }
+        td { padding: 9px 12px; border-bottom: 1px solid #0e1726; color: #ffffff; }
+        tr:hover { background: #0e1726; }
+        .tag { padding: 2px 5px; border-radius: 2px; font-weight: bold; font-size: 10px; display: inline-block; text-transform: uppercase; }
+        .tag-Host-Sensor { background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid #059669; }
+        .tag-Tshark { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0284c7; }
+        .tag-Tcpdump { background: rgba(129, 140, 248, 0.2); color: #818cf8; border: 1px solid #4f46e5; }
+        .mitre-badge { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid #e11d48; padding: 2px 5px; border-radius: 2px; font-weight: bold; font-size: 10px; }
+        .status-nuevo { color: #fbbf24; font-weight: bold; text-transform: uppercase; }
+        .status-fp { color: #00ffff; text-decoration: line-through; text-transform: uppercase; }
+        .status-mitigado { color: #34d399; font-weight: bold; text-transform: uppercase; }
+        .status-bloqueado { color: #f87171; font-weight: bold; text-transform: uppercase; }
+        .action-btn { background: #0e1726; color: #00ff66; border: 1px solid #00ff66; padding: 4px 7px; border-radius: 2px; cursor: pointer; font-size: 10px; margin-right: 2px; font-family: inherit; font-weight: bold; text-transform: uppercase; }
+        .action-btn:hover { background: #00ff66; color: #000000; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(5,11,20,0.9); justify-content: center; align-items: center; }
+        .modal-content { background: #0a1120; border: 1px solid #00ff66; padding: 20px; border-radius: 2px; width: 720px; max-width: 90%; }
+        .close { color: #00ffff; float: right; font-size: 20px; font-weight: bold; cursor: pointer; font-family: monospace; }
+        .close:hover { color: #00ff66; }
+    </style>
+</head>
+<body id="soc-body">
+    <header class="topbar">
+        <div>
+            <pre class="ascii-banner">
+████████╗██████╗ ██████╗ ██╗   ██╗███████╗███████╗
+╚══██╔══╝██╔══██╗╚════██╗╚██╗ ██╔╝██╔════╝██╔════╝
+   ██║   ██████╔╝ █████╔╝ ╚████╔╝ █████╗  ███████╗
+   ██║   ██╔══██╗ ╚╚══██╗  ╚██╔╝  ██╔══╝  ╚██████║
+   ██║   ██║  ██║██████╔╝   ██║   ███████╗███████║
+   ╚═╝   ╚═╝  ╚═╝╚═════╝    ╚═╝   ╚══════╝╚══════╝
+            </pre>
+            <p class="subtitle">> TTY_SESSION: SECURE // SENSORS: HIDS, TSHARK, TCPDUMP(BPF) + SIEM/SOAR</p>
+        </div>
+        <div class="topbar-actions">
+            <button class="btn" id="btn-toggle-engine" onclick="toggleEngine()">[ PAUSE ]</button>
+            <button class="btn" onclick="exportEvidence()">[ 📥 EXPORT_ALL ]</button>
+            <button class="btn" onclick="togglePanicMode()" id="btn-panic">[ 🚨 RED_ALERT ]</button>
+            <output class="badge-live" id="engine-status">[● SENSORS LIVE]</output>
+        </div>
+    </header>
+
+    <section class="kpi-grid">
+        <div class="kpi-card"><span class="kpi-title">NET_EVENTS</span><span class="kpi-value" id="count-total">0</span></div>
+        <div class="kpi-card tcpdump"><span class="kpi-title">TCPDUMP_RAW</span><span class="kpi-value" id="count-tcpdump">0</span></div>
+        <div class="kpi-card tshark"><span class="kpi-title">TSHARK_TLS</span><span class="kpi-value" id="count-tshark">0</span></div>
+        <div class="kpi-card host"><span class="kpi-title">HOST_HIDS</span><span class="kpi-value" id="count-host">0</span></div>
+    </section>
+
+    <section class="controls">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; flex: 1;">
+            <button class="btn active" data-filter="ALL">ALL</button>
+            <button class="btn" data-filter="Host-Sensor">HOST</button>
+            <button class="btn" data-filter="Tshark">TSHARK</button>
+            <button class="btn" data-filter="Tcpdump">TCPDUMP</button>
+            <button class="btn" data-filter="Nuevo">NUEVOS</button>
+            <label for="search-box" style="display:none;">Buscar</label>
+            <input type="text" id="search-box" placeholder="grep --filter (IP, estado, MITRE ID)...">
+        </div>
+    </section>
+
+    <section class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>TIMESTAMP</th>
+                    <th>SENSOR</th>
+                    <th>EVENT_PAYLOAD</th>
+                    <th>MITRE_ATT&CK</th>
+                    <th>STATUS</th>
+                    <th>CLI_ACTIONS</th>
+                </tr>
+            </thead>
+            <tbody id="events-body">
+                <tr><td colspan="7" style="text-align: center; padding: 20px;">[!] INICIALIZANDO SAKURA SOC & TRIPLESENSOR...</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <div id="modal-detail" class="modal">
+        <div class="modal-content">
+            <button type="button" class="close" onclick="closeModal()" aria-label="Cerrar">&times;</button>
+            <h2>[ REAL_TIME_FORENSIC_CONSOLE ]</h2>
+            <div style="font-size: 10.5px; margin-bottom: 4px; font-weight: bold;">RAW PAYLOAD JSON:</div>
+            <pre id="modal-text" style="background: #000; padding: 8px; border: 1px solid #00ff66; color: #00ff66; overflow-x: auto; max-height: 120px; margin-bottom: 10px;"></pre>
+            <div style="font-size: 10.5px; margin-bottom: 4px; font-weight: bold;">IP INTEL & ORIGIN ANALYSIS:</div>
+            <div id="modal-ip-intel" style="background: #000; padding: 8px; border: 1px solid #00ff66; margin-bottom: 10px;"></div>
+            <div style="font-size: 10.5px; margin-bottom: 4px; font-weight: bold;">MITRE ATT&CK PLAYBOOK:</div>
+            <div id="modal-mitre-guide" style="background: #000; padding: 8px; border: 1px solid #00ff66; margin-bottom: 12px;"></div>
+            <button class="btn" onclick="exportSingleEvent()">[ 📥 EXPORT_JSON ]</button>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'ALL';
+        let allEvents = [];
+        let currentEvent = null;
+        let enginePaused = false;
+        let panicMode = false;
+
+        document.querySelectorAll('.btn[data-filter]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.btn[data-filter]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentFilter = btn.dataset.filter || 'ALL';
+                renderTable();
+            });
+        });
+
+        const searchBox = document.getElementById('search-box');
+        if (searchBox) searchBox.addEventListener('input', renderTable);
+
+        function updateKpiCounters(total, host, tshark, tcpdump) {
+            document.getElementById('count-total').textContent = String(total);
+            document.getElementById('count-host').textContent = String(host);
+            document.getElementById('count-tshark').textContent = String(tshark);
+            document.getElementById('count-tcpdump').textContent = String(tcpdump);
+        }
+
+        function createTableRow(ev) {
+            const tr = document.createElement('tr');
+            const tdNum = document.createElement('td');
+            tdNum.textContent = String(allEvents.indexOf(ev) + 1);
+            tdNum.style.color = '#00ffff';
+            tdNum.style.fontWeight = 'bold';
+
+            const tdTime = document.createElement('td');
+            tdTime.textContent = new Date(ev.timestamp).toLocaleString('es-AR', { hour12: false });
+
+            const tdSrc = document.createElement('td');
+            const spanSrc = document.createElement('span');
+            spanSrc.className = 'tag tag-' + ev.source;
+            spanSrc.textContent = ev.source;
+            tdSrc.appendChild(spanSrc);
+
+            const tdType = document.createElement('td');
+            tdType.textContent = ev.event_type;
+
+            const tdMitre = document.createElement('td');
+            const spanMitre = document.createElement('span');
+            spanMitre.className = 'mitre-badge';
+            spanMitre.textContent = ev.mitre_id;
+            tdMitre.appendChild(spanMitre);
+
+            const tdStatus = document.createElement('td');
+            const spanStatus = document.createElement('span');
+            spanStatus.className = 'status-nuevo';
+            spanStatus.textContent = ev.status || 'Nuevo';
+            tdStatus.appendChild(spanStatus);
+
+            const tdActions = document.createElement('td');
+            const btnDetail = document.createElement('button');
+            btnDetail.className = 'action-btn';
+            btnDetail.textContent = 'INSPECT';
+            btnDetail.onclick = () => showDetail(ev);
+            tdActions.appendChild(btnDetail);
+
+            tr.append(tdNum, tdTime, tdSrc, tdType, tdMitre, tdStatus, tdActions);
+            return tr;
+        }
+
+        function renderTable() {
+            const query = searchBox ? searchBox.value.toLowerCase().trim() : '';
+            const tbody = document.getElementById('events-body');
+            if (!tbody) return;
+            tbody.textContent = '';
+
+            if (allEvents.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #fbbf24; padding: 20px;">[!] ESPERANDO TELEMETRÍA DE RED EN VIVO...</td></tr>';
+                updateKpiCounters(0, 0, 0, 0);
+                return;
+            }
+
+            let cHost = 0, cTshark = 0, cTcpdump = 0;
+            allEvents.forEach(ev => {
+                if (ev.source === 'Host-Sensor') cHost++;
+                if (ev.source === 'Tshark') cTshark++;
+                if (ev.source === 'Tcpdump') cTcpdump++;
+            });
+            updateKpiCounters(allEvents.length, cHost, cTshark, cTcpdump);
+
+            const filtered = allEvents.slice().reverse().filter(ev => {
+                const matchF = (currentFilter === 'ALL' || ev.source === currentFilter || ev.status === currentFilter);
+                const text = (ev.timestamp + ' ' + ev.source + ' ' + ev.event_type + ' ' + ev.mitre_id + ' ' + ev.description).toLowerCase();
+                return matchF && text.includes(query);
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #00ffff; padding: 20px;">[!] NO GREP MATCH FOUND.</td></tr>';
+                return;
+            }
+
+            filtered.slice(0, 100).forEach(ev => tbody.appendChild(createTableRow(ev)));
+        }
+
+        function showDetail(ev) {
+            currentEvent = ev;
+            document.getElementById('modal-text').textContent = JSON.stringify(ev, null, 2);
+            document.getElementById('modal-ip-intel').innerHTML = '<span>[i] Analizando telemetría de red local y remota.</span>';
+            document.getElementById('modal-mitre-guide').innerHTML = '<span>Playbook activo para ' + ev.mitre_id + '</span>';
+            document.getElementById('modal-detail').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-detail').style.display = 'none';
+        }
+
+        function exportSingleEvent() {
+            if (!currentEvent) return;
+            const a = document.createElement('a');
+            a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentEvent, null, 2));
+            a.download = "tr3yes_log_" + currentEvent.id + ".json";
+            a.click();
+            a.remove();
+        }
+
+        function exportEvidence() {
+            const a = document.createElement('a');
+            a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allEvents, null, 2));
+            a.download = "tr3yes_forensic_dump_" + Date.now() + ".json";
+            a.click();
+            a.remove();
+        }
+
+        function togglePanicMode() {
+            panicMode = !panicMode;
+            document.getElementById('soc-body').classList.toggle('panic', panicMode);
+            document.getElementById('btn-panic').textContent = panicMode ? '[ 🚨 DEFCON_1 ]' : '[ 🚨 RED_ALERT ]';
+        }
+
+        function toggleEngine() {
+            enginePaused = !enginePaused;
+            document.getElementById('btn-toggle-engine').textContent = enginePaused ? '[ RESUME ]' : '[ PAUSE ]';
+            document.getElementById('engine-status').textContent = enginePaused ? '[● SENSORS PAUSED]' : '[● SENSORS LIVE]';
+        }
+
+        async function fetchEvents() {
+            if (enginePaused) return;
+            try {
+                const res = await fetch('/api/events');
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (res.ok) {
+                    allEvents = await res.json();
+                    renderTable();
+                }
+            } catch (e) {}
+        }
+
+        setInterval(fetchEvents, 3000);
+        fetchEvents();
+    </script>
+</body>
+</html>
