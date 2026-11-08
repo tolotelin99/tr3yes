@@ -23,7 +23,7 @@
             <button class="btn" id="btn-toggle-engine" onclick="toggleEngine()" style="background: #064e3b; color: #34d399; border-color: #059669;">[ PAUSE ]</button>
             <button class="btn" onclick="exportEvidence()" style="background: #312e81; color: #818cf8; border-color: #4f46e5;">[ 📥 EXPORT_ALL ]</button>
             <button class="btn" onclick="togglePanicMode()" style="background: #7f1d1d; color: #fca5a5; border-color: #dc2626;" id="btn-panic">[ 🚨 RED_ALERT ]</button>
-            <div class="badge-live" id="engine-status">[● SENSORS LIVE]</div>
+            <div role="status" aria-live="polite" class="badge-live" id="engine-status">[● SENSORS LIVE]</div>
         </div>
     </header>
 
@@ -42,6 +42,7 @@
             <button class="btn" data-filter="Tcpdump" style="border-color: #818cf8;">TCPDUMP</button>
             <button class="btn" data-filter="Nuevo" style="border-color: #fbbf24;">NUEVOS</button>
             <button class="btn" data-filter="Falso Positivo" style="border-color: #94a3b8;">FP</button>
+            <label for="search-box" style="display:none;">Buscar eventos</label>
             <input type="text" id="search-box" placeholder="grep --filter (IP, estado, MITRE ID)...">
         </div>
         <button class="btn" onclick="clearAllEvents()" style="background: #450a0a; color: #fca5a5; border-color: #991b1b;">[ 🗑️ PURGE ]</button>
@@ -68,7 +69,7 @@
 
     <div id="modal-detail" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeModal()">&times;</span>
+            <button type="button" class="close" onclick="closeModal()" aria-label="Cerrar ventana">&times;</button>
             <h2 style="color: #00ff66; margin-bottom: 8px; font-size: 15px; text-transform: uppercase;">[ REAL_TIME_FORENSIC_CONSOLE ]</h2>
             
             <div style="font-size: 10.5px; color: #38bdf8; margin-bottom: 4px; font-weight: bold;">RAW PAYLOAD JSON:</div>

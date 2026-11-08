@@ -418,7 +418,6 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	attemptsMutex.Lock()
 	attempt, exists := loginAttempts[ip]
 	if exists && attempt.lockUntil.After(time.Now()) {
-		tiempoRestante := int(time.Until(attempt.lockUntil).Seconds())
 		attemptsMutex.Unlock()
 
 		w.Header().Set(headerContentType, contentTypeHTML)
