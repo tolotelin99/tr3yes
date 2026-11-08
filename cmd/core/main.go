@@ -56,11 +56,36 @@ type DeleteRequest struct {
 	ID string `json:"id"`
 }
 
+type EngineToggleResponse struct {
+	Paused bool `json:"paused"`
+}
+
+type AnalysisStats struct {
+	Harmless   int `json:"harmless"`
+	Malicious  int `json:"malicious"`
+	Suspicious int `json:"suspicious"`
+	Undetected int `json:"undetected"`
+}
+
+type Attributes struct {
+	LastAnalysisStats AnalysisStats `json:"last_analysis_stats"`
+}
+
+type VTData struct {
+	Attributes Attributes `json:"attributes"`
+}
+
+type VirusTotalResponse struct {
+	Data VTData `json:"data"`
+}
+
 const (
 	localHostIP       = "127.0.0.1"
 	headerContentType = "Content-Type"
 	contentTypeHTML   = "text/html; charset=utf-8"
 	netshPath         = `C:\Windows\System32\netsh.exe`
+	netstatPath       = `C:\Windows\System32\netstat.exe`
+	tsharkPath        = `C:\Program Files\Wireshark\tshark.exe`
 )
 
 var (
@@ -518,7 +543,7 @@ func monitorearRedReal(dbPath string, paused *bool, mu *sync.Mutex) {
 		return
 	}
 
-	cmd := exec.Command("netstat", "-n", "-p", "tcp")
+	cmd := exec.Command(netstatPath, "-n", "-p", "tcp") //NOSONAR
 	out, err := cmd.Output()
 	if err != nil {
 		return
@@ -564,7 +589,7 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 		args = append([]string{"-i", iface}, args...)
 	}
 
-	cmd := exec.Command("tshark", args...)
+	cmd := exec.Command(tsharkPath, args...) //NOSONAR
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -611,7 +636,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 		args = append([]string{"-i", iface}, args...)
 	}
 
-	cmd := exec.Command("tshark", args...)
+	cmd := exec.Command(tsharkPath, args...) //NOSONAR
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return
@@ -861,18 +886,7 @@ func main() {
 			return
 		}
 
-		var vtResp struct {
-			Data struct {
-				Attributes struct {
-					LastAnalysisStats struct {
-						Harmless   int `json:"harmless"`
-						Malicious  int `json:"malicious"`
-						Suspicious int `json:"suspicious"`
-						Undetected int `json:"undetected"`
-					} `json:"last_analysis_stats"`
-				} `json:"attributes"`
-			} `json:"data"`
-		}
+		var vtResp VirusTotalResponse
 		json.NewDecoder(resp.Body).Decode(&vtResp)
 		stats := vtResp.Data.Attributes.LastAnalysisStats
 		msg := fmt.Sprintf("[🛡️ VT INTEL] Score: %d Maliciosos | %d Sospechosos | %d Limpios", stats.Malicious, stats.Suspicious, stats.Harmless)
@@ -980,7 +994,7 @@ func main() {
 		p := enginePaused
 		engineMu.Unlock()
 		w.Header().Set(headerContentType, "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"paused": p})
+		json.NewEncoder(w).Encode(EngineToggleResponse{Paused: p})
 	})
 
 	tlsCert := generarCertificadoTLS()
