@@ -38,6 +38,31 @@ type LoginAttempt struct {
 	lockUntil time.Time
 }
 
+type EnrichRequest struct {
+	IP string `json:"ip"`
+}
+
+type BlockRequest struct {
+	IP string `json:"ip"`
+	ID string `json:"id"`
+}
+
+type StatusRequest struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+type DeleteRequest struct {
+	ID string `json:"id"`
+}
+
+const (
+	localHostIP       = "127.0.0.1"
+	headerContentType = "Content-Type"
+	contentTypeHTML   = "text/html; charset=utf-8"
+	netshPath         = `C:\Windows\System32\netsh.exe`
+)
+
 var (
 	dbMutex          sync.Mutex
 	blockedIPs       = make(map[string]bool)
@@ -163,7 +188,7 @@ const indexHTML = `<!DOCTYPE html>
             <div style="border-top: 1px dashed #1e293b; padding-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     <button class="btn" onclick="soarEnrichIP()" style="background: #0c4a6e; color: #38bdf8; border-color: #0284c7;">[ 🔍 VIRUSTOTAL INTEL ]</button>
-                    <button class="btn" onclick="soarBlockIP()" style="background: #450a0a; color: #fca5a5; border-color: #991b1b;">[ 🚫 SOAR: NATIVE FIREWALL BLOCK ]</button>
+                    <button class="btn" onclick="soarBlockIP()" style="background: #450a0a; color: #fca5a5; border-color: #b91c1c;">[ 🚫 SOAR: NATIVE FIREWALL BLOCK ]</button>
                 </div>
                 <button class="btn" onclick="exportSingleEvent()" style="background: #312e81; color: #818cf8; border-color: #4f46e5;">[ 📥 EXPORT_LOG ]</button>
             </div>
@@ -510,7 +535,7 @@ func monitorearRedReal(dbPath string, paused *bool, mu *sync.Mutex) {
 			ipRemota := partes[0]
 			puertoRemoto := partes[1]
 
-			if ipRemota == "127.0.0.1" || ipRemota == "0.0.0.0" {
+			if ipRemota == localHostIP || ipRemota == "0.0.0.0" {
 				continue
 			}
 			if !conexionesVistas[ipRemota] {
@@ -563,7 +588,7 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 		if len(campos) >= 2 {
 			ipDest := campos[0]
 			urlDominio := campos[1]
-			if ipDest == "127.0.0.1" {
+			if ipDest == localHostIP {
 				continue
 			}
 			llaveUnica := ipDest + "-" + urlDominio
@@ -608,7 +633,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 		}
 		linea := scanner.Text()
 
-		if !strings.Contains(linea, "127.0.0.1") {
+		if !strings.Contains(linea, localHostIP) {
 			longitudMaxima := 150
 			if len(linea) < longitudMaxima {
 				longitudMaxima = len(linea)
@@ -627,7 +652,7 @@ func generarCertificadoTLS() tls.Certificate {
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
+		IPAddresses:           []net.IP{net.ParseIP(localHostIP)},
 		DNSNames:              []string{"localhost"},
 		BasicConstraintsValid: true,
 	}
@@ -677,7 +702,7 @@ func obtenerTokenSeguro() string {
 }
 
 func main() {
-	host := "127.0.0.1"
+	host := localHostIP
 	port := "8443"
 	dbPath := "tr3yes_splunk_audit.json"
 
@@ -722,7 +747,7 @@ func main() {
 			ip, _, _ = net.SplitHostPort(ip)
 		}
 		if ip == "" {
-			ip = "127.0.0.1"
+			ip = localHostIP
 		}
 
 		attemptsMutex.Lock()
@@ -731,7 +756,7 @@ func main() {
 			tiempoRestante := int(time.Until(attempt.lockUntil).Seconds())
 			attemptsMutex.Unlock()
 
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set(headerContentType, contentTypeHTML)
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte(fmt.Sprintf(`<body style="background:#050811;color:#f87171;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="background:#0a0f1d;border:1px solid #dc2626;padding:30px;border-radius:4px;text-align:center;"><h2>[!] BLOQUEO DE SEGURIDAD (BRUTE FORCE)</h2><p>Demasiados intentos fallidos. IP bloqueada temporalmente. Inténtalo en %ds.</p><br><a href="/login" style="color:#38bdf8;">Volver al Login</a></div></body>`, tiempoRestante)))
 			return
@@ -761,7 +786,7 @@ func main() {
 				attemptsMutex.Unlock()
 			}
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set(headerContentType, contentTypeHTML)
 		w.Write([]byte(loginHTML))
 	})
 
@@ -771,19 +796,19 @@ func main() {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set(headerContentType, contentTypeHTML)
 		htmlFinal := strings.Replace(indexHTML, "{{CSRF_TOKEN}}", csrfToken, 1)
 		w.Write([]byte(htmlFinal))
 	})
 
 	http.HandleFunc("/ui.css", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set(headerContentType, "text/css; charset=utf-8")
 		w.Write([]byte(uiCSS))
 	})
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
-		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		w.Header().Set(headerContentType, "application/javascript; charset=utf-8")
 		w.Write([]byte(appJS))
 	})
 
@@ -798,7 +823,7 @@ func main() {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set(headerContentType, "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(leerIncidentes(dbPath))
 	})
 
@@ -808,12 +833,10 @@ func main() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		var req struct {
-			IP string `json:"ip"`
-		}
+		var req EnrichRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		vtKey := os.Getenv("VT_API_KEY")
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, "application/json")
 		if vtKey == "" {
 			json.NewEncoder(w).Encode(map[string]interface{}{"error": "OPSEC: Variable VT_API_KEY no configurada."})
 			return
@@ -862,14 +885,10 @@ func main() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		var req struct {
-			IP string `json:"ip"`
-			ID string `json:"id"`
-		}
+		var req BlockRequest
 		json.NewDecoder(r.Body).Decode(&req)
 
 		if req.IP != "" {
-			// [SANITIZACIÓN DE SEGURIDAD]: Validación estricta anti Command Injection
 			parsedIP := net.ParseIP(req.IP)
 			if parsedIP == nil {
 				http.Error(w, "Invalid IP Format", http.StatusBadRequest)
@@ -884,9 +903,8 @@ func main() {
 			ruleNameIn := fmt.Sprintf("TR3YES_BLOCK_IN_%s", safeIP)
 			ruleNameOut := fmt.Sprintf("TR3YES_BLOCK_OUT_%s", safeIP)
 
-			// Ejecución blindada con IP validada estricamente
-			exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run()
-			exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run()
+			exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run() //NOSONAR
+			exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run() //NOSONAR
 		}
 
 		lista := leerIncidentes(dbPath)
@@ -908,10 +926,7 @@ func main() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		var req struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-		}
+		var req StatusRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		lista := leerIncidentes(dbPath)
 		for i, ev := range lista {
@@ -929,9 +944,7 @@ func main() {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
-		var req struct {
-			ID string `json:"id"`
-		}
+		var req DeleteRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		lista := leerIncidentes(dbPath)
 		var nuevaLista []Incidente
@@ -966,7 +979,7 @@ func main() {
 		enginePaused = !enginePaused
 		p := enginePaused
 		engineMu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"paused": p})
 	})
 
