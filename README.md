@@ -14,7 +14,7 @@ TR3YES core operations run on concurrent Go routines feeding a unified forensic 
 
 ---
 
-## 🚀 Core Capabilities
+## Core Capabilities
 
 - **Native SOAR Automation:** Automated containment through live firewall rule injection (`netsh advfirewall`), instantly applying inbound/outbound drop rules on malicious endpoints.
 - **Threat Intelligence (CTI):** Real-time IP address enrichment leveraging the VirusTotal v3 REST API.
@@ -44,7 +44,7 @@ export TR3YES_IFACE="5"
 
 # [OPTIONAL] Static authentication token (if omitted, an ephemeral token is generated in console)
 export TR3YES_TOKEN="secure_access_token_123"
-💻 Execution
+## Execution
 Run the SOC server with elevated administrative privileges:
 
 Bash
