@@ -535,6 +535,43 @@ func generarIDUnico() string {
 	return hex.EncodeToString(b)
 }
 
+func procesarLineaConexionRed(dbPath string, linea string) {
+	campos := strings.Fields(linea)
+	if len(campos) < 4 || !strings.Contains(linea, "ESTABLISHED") {
+		return
+	}
+	remoto := campos[2]
+	partes := strings.Split(remoto, ":")
+	if len(partes) != 2 {
+		return
+	}
+	ipRemota := partes[0]
+	puertoRemoto := partes[1]
+
+	if ipRemota == localHostIP || ipRemota == "0.0.0.0" {
+		return
+	}
+	if !conexionesVistas[ipRemota] {
+		conexionesVistas[ipRemota] = true
+		go func(ip, puerto string) {
+			nombres, _ := net.LookupAddr(ip)
+			dominio := "[Sin Dominio Público]"
+			if len(nombres) > 0 {
+				dominio = strings.TrimRight(nombres[0], ".")
+			}
+			registrarIncidente(dbPath, Incidente{
+				ID:          generarIDUnico(),
+				Timestamp:   time.Now().Format(time.RFC3339),
+				Source:      "Host-Sensor",
+				EventType:   "Conexión Externa Real TCP",
+				MitreID:     "T1049 (System Network Connections)",
+				Description: fmt.Sprintf("[HIDS] Nueva conexión establecida -> IP: %s | Puerto: %s | Dominio(rDNS): %s", ip, puerto, dominio),
+				Status:      "Nuevo",
+			})
+		}(ipRemota, puertoRemoto)
+	}
+}
+
 func monitorearRedReal(dbPath string, paused *bool, mu *sync.Mutex) {
 	mu.Lock()
 	p := *paused
@@ -550,31 +587,7 @@ func monitorearRedReal(dbPath string, paused *bool, mu *sync.Mutex) {
 	}
 	lineas := strings.Split(string(out), "\n")
 	for _, linea := range lineas {
-		campos := strings.Fields(linea)
-		if len(campos) >= 4 && strings.Contains(linea, "ESTABLISHED") {
-			remoto := campos[2]
-			partes := strings.Split(remoto, ":")
-			if len(partes) != 2 {
-				continue
-			}
-			ipRemota := partes[0]
-			puertoRemoto := partes[1]
-
-			if ipRemota == localHostIP || ipRemota == "0.0.0.0" {
-				continue
-			}
-			if !conexionesVistas[ipRemota] {
-				conexionesVistas[ipRemota] = true
-				go func(ip, puerto string) {
-					nombres, _ := net.LookupAddr(ip)
-					dominio := "[Sin Dominio Público]"
-					if len(nombres) > 0 {
-						dominio = strings.TrimRight(nombres[0], ".")
-					}
-					registrarIncidente(dbPath, Incidente{ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Host-Sensor", EventType: "Conexión Externa Real TCP", MitreID: "T1049 (System Network Connections)", Description: fmt.Sprintf("[HIDS] Nueva conexión establecida -> IP: %s | Puerto: %s | Dominio(rDNS): %s", ip, puerto, dominio), Status: "Nuevo"})
-				}(ipRemota, puertoRemoto)
-			}
-		}
+		procesarLineaConexionRed(dbPath, linea)
 	}
 }
 
@@ -733,250 +746,267 @@ func aplicarCabeceras(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
 }
 
-func validarSesion(r *http.Request, serverToken string) bool {
+func validarSesion(r *http.Request) bool {
 	c, err := r.Cookie("tr3yes_session")
 	return err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(serverToken)) == 1
 }
 
-func validarCSRF(r *http.Request, csrfToken string) bool {
+func validarCSRF(r *http.Request) bool {
 	clientToken := r.Header.Get("X-CSRF-Token")
 	return subtle.ConstantTimeCompare([]byte(clientToken), []byte(csrfToken)) == 1
 }
 
-func configurarRutasHTTP(dbPath string) {
-	http.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		ip := r.RemoteAddr
-		if strings.Contains(ip, ":") {
-			ip, _, _ = net.SplitHostPort(ip)
-		}
-		if ip == "" {
-			ip = localHostIP
-		}
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	aplicarCabeceras(w, r)
+	ip := r.RemoteAddr
+	if strings.Contains(ip, ":") {
+		ip, _, _ = net.SplitHostPort(ip)
+	}
+	if ip == "" {
+		ip = localHostIP
+	}
 
-		attemptsMutex.Lock()
-		attempt, exists := loginAttempts[ip]
-		if exists && attempt.lockUntil.After(time.Now()) {
-			tiempoRestante := int(time.Until(attempt.lockUntil).Seconds())
-			attemptsMutex.Unlock()
-
-			w.Header().Set(headerContentType, contentTypeHTML)
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(fmt.Sprintf(`<body style="background:#050811;color:#f87171;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="background:#0a0f1d;border:1px solid #dc2626;padding:30px;border-radius:4px;text-align:center;"><h2>[!] BLOQUEO DE SEGURIDAD (BRUTE FORCE)</h2><p>Demasiados intentos fallidos. IP bloqueada temporalmente. Inténtalo en %ds.</p><br><a href="/login" style="color:#38bdf8;">Volver al Login</a></div></body>`, tiempoRestante)))
-			return
-		}
+	attemptsMutex.Lock()
+	attempt, exists := loginAttempts[ip]
+	if exists && attempt.lockUntil.After(time.Now()) {
+		tiempoRestante := int(time.Until(attempt.lockUntil).Seconds())
 		attemptsMutex.Unlock()
 
-		if r.Method == http.MethodPost {
-			r.ParseForm()
-			ingreso := r.FormValue("token")
-			attemptsMutex.Lock()
-			if subtle.ConstantTimeCompare([]byte(ingreso), []byte(serverToken)) == 1 {
-				delete(loginAttempts, ip)
-				attemptsMutex.Unlock()
-				http.SetCookie(w, &http.Cookie{Name: "tr3yes_session", Value: serverToken, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
-				http.Redirect(w, r, "/", http.StatusSeeOther)
-				return
-			} else {
-				if !exists {
-					attempt = &LoginAttempt{}
-					loginAttempts[ip] = attempt
-				}
-				attempt.failures++
-				if attempt.failures >= 3 {
-					attempt.lockUntil = time.Now().Add(30 * time.Second)
-					attempt.failures = 0
-				}
-				attemptsMutex.Unlock()
-			}
-		}
 		w.Header().Set(headerContentType, contentTypeHTML)
-		w.Write([]byte(loginHTML))
-	})
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(fmt.Sprintf(`<body style="background:#050811;color:#f87171;font-family:monospace;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;"><div style="background:#0a0f1d;border:1px solid #dc2626;padding:30px;border-radius:4px;text-align:center;"><h2>[!] BLOQUEO DE SEGURIDAD (BRUTE FORCE)</h2><p>Demasiados intentos fallidos. IP bloqueada temporalmente. Inténtalo en %ds.</p><br><a href="/login" style="color:#38bdf8;">Volver al Login</a></div></body>`, tiempoRestante)))
+		return
+	}
+	attemptsMutex.Unlock()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+	if r.Method == http.MethodPost {
+		r.ParseForm()
+		ingreso := r.FormValue("token")
+		attemptsMutex.Lock()
+		if subtle.ConstantTimeCompare([]byte(ingreso), []byte(serverToken)) == 1 {
+			delete(loginAttempts, ip)
+			attemptsMutex.Unlock()
+			http.SetCookie(w, &http.Cookie{Name: "tr3yes_session", Value: serverToken, Path: "/", HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		w.Header().Set(headerContentType, contentTypeHTML)
-		htmlFinal := strings.Replace(indexHTML, "{{CSRF_TOKEN}}", csrfToken, 1)
-		w.Write([]byte(htmlFinal))
-	})
+		if !exists {
+			attempt = &LoginAttempt{}
+			loginAttempts[ip] = attempt
+		}
+		attempt.failures++
+		if attempt.failures >= 3 {
+			attempt.lockUntil = time.Now().Add(30 * time.Second)
+			attempt.failures = 0
+		}
+		attemptsMutex.Unlock()
+	}
+	w.Header().Set(headerContentType, contentTypeHTML)
+	w.Write([]byte(loginHTML))
+}
 
+func handleDashboard(w http.ResponseWriter, r *http.Request) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	w.Header().Set(headerContentType, contentTypeHTML)
+	htmlFinal := strings.Replace(indexHTML, "{{CSRF_TOKEN}}", csrfToken, 1)
+	w.Write([]byte(htmlFinal))
+}
+
+func handleAPIEvents(w http.ResponseWriter, r *http.Request, dbPath string) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set(headerContentType, "application/json; charset=utf-8")
+	json.NewEncoder(w).Encode(leerIncidentes(dbPath))
+}
+
+func handleAPIEnrich(w http.ResponseWriter, r *http.Request) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	var req EnrichRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	vtKey := os.Getenv("VT_API_KEY")
+	w.Header().Set(headerContentType, "application/json")
+	if vtKey == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "OPSEC: Variable VT_API_KEY no configurada."})
+		return
+	}
+
+	url := "https://www.virustotal.com/api/v3/ip-addresses/" + req.IP
+	client := &http.Client{Timeout: 10 * time.Second}
+	httpReq, _ := http.NewRequest("GET", url, nil)
+	httpReq.Header.Add("x-apikey", vtKey)
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "Fallo al conectar con la red externa."})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"message": "[🛡️ VT INTEL] IP sin registros previos.", "malicious": 0})
+		return
+	} else if resp.StatusCode != 200 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("Fallo en API VirusTotal (HTTP %d).", resp.StatusCode)})
+		return
+	}
+
+	var vtResp VirusTotalResponse
+	json.NewDecoder(resp.Body).Decode(&vtResp)
+	stats := vtResp.Data.Attributes.LastAnalysisStats
+	msg := fmt.Sprintf("[🛡️ VT INTEL] Score: %d Maliciosos | %d Sospechosos | %d Limpios", stats.Malicious, stats.Suspicious, stats.Harmless)
+	json.NewEncoder(w).Encode(map[string]interface{}{"message": msg, "malicious": stats.Malicious})
+}
+
+func handleAPIBlock(w http.ResponseWriter, r *http.Request, dbPath string) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	var req BlockRequest
+	json.NewDecoder(r.Body).Decode(&req)
+
+	if req.IP != "" {
+		parsedIP := net.ParseIP(req.IP)
+		if parsedIP == nil {
+			http.Error(w, "Invalid IP Format", http.StatusBadRequest)
+			return
+		}
+		safeIP := parsedIP.String()
+
+		soarMutex.Lock()
+		blockedIPs[safeIP] = true
+		soarMutex.Unlock()
+
+		ruleNameIn := fmt.Sprintf("TR3YES_BLOCK_IN_%s", safeIP)
+		ruleNameOut := fmt.Sprintf("TR3YES_BLOCK_OUT_%s", safeIP)
+
+		exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run()  //NOSONAR
+		exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run() //NOSONAR
+	}
+
+	lista := leerIncidentes(dbPath)
+	for i, ev := range lista {
+		if ev.ID == req.ID || (req.IP != "" && strings.Contains(ev.Description, req.IP)) {
+			lista[i].Status = "SOAR_BLOQUEADO"
+			if !strings.Contains(lista[i].Description, "[FW NATIVO]") {
+				lista[i].Description = "[FW NATIVO] " + lista[i].Description
+			}
+		}
+	}
+	escribirIncidentes(dbPath, lista)
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAPIStatus(w http.ResponseWriter, r *http.Request, dbPath string) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	var req StatusRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	lista := leerIncidentes(dbPath)
+	for i, ev := range lista {
+		if ev.ID == req.ID {
+			lista[i].Status = req.Status
+		}
+	}
+	escribirIncidentes(dbPath, lista)
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAPIDelete(w http.ResponseWriter, r *http.Request, dbPath string) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	var req DeleteRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	lista := leerIncidentes(dbPath)
+	var nuevaLista []Incidente
+	for _, ev := range lista {
+		if ev.ID != req.ID {
+			nuevaLista = append(nuevaLista, ev)
+		}
+	}
+	escribirIncidentes(dbPath, nuevaLista)
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAPIClear(w http.ResponseWriter, r *http.Request, dbPath string) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	conexionesVistas = make(map[string]bool)
+	tsharkVistos = make(map[string]bool)
+	escribirIncidentes(dbPath, []Incidente{})
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAPIToggle(w http.ResponseWriter, r *http.Request, engineMu *sync.Mutex, enginePaused *bool) {
+	aplicarCabeceras(w, r)
+	if !validarSesion(r) || !validarCSRF(r) || r.Method != http.MethodPost {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	engineMu.Lock()
+	*enginePaused = !*enginePaused
+	p := *enginePaused
+	engineMu.Unlock()
+	w.Header().Set(headerContentType, "application/json")
+	json.NewEncoder(w).Encode(EngineToggleResponse{Paused: p})
+}
+
+func configurarRutasHTTP(dbPath string, engineMu *sync.Mutex, enginePaused *bool) {
+	http.HandleFunc("/login", handleLogin)
+	http.HandleFunc("/", handleDashboard)
 	http.HandleFunc("/ui.css", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		w.Header().Set(headerContentType, "text/css; charset=utf-8")
 		w.Write([]byte(uiCSS))
 	})
-
 	http.HandleFunc("/app.js", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w, r)
 		w.Header().Set(headerContentType, "application/javascript; charset=utf-8")
 		w.Write([]byte(appJS))
 	})
-
 	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", "GET")
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(headerContentType, "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(leerIncidentes(dbPath))
+		handleAPIEvents(w, r, dbPath)
 	})
-
-	http.HandleFunc("/api/soar/enrich", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		var req EnrichRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		vtKey := os.Getenv("VT_API_KEY")
-		w.Header().Set(headerContentType, "application/json")
-		if vtKey == "" {
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "OPSEC: Variable VT_API_KEY no configurada."})
-			return
-		}
-
-		url := "https://www.virustotal.com/api/v3/ip-addresses/" + req.IP
-		client := &http.Client{Timeout: 10 * time.Second}
-		httpReq, _ := http.NewRequest("GET", url, nil)
-		httpReq.Header.Add("x-apikey", vtKey)
-		resp, err := client.Do(httpReq)
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Fallo al conectar con la red externa."})
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == 404 {
-			json.NewEncoder(w).Encode(map[string]interface{}{"message": "[🛡️ VT INTEL] IP sin registros previos.", "malicious": 0})
-			return
-		} else if resp.StatusCode != 200 {
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("Fallo en API VirusTotal (HTTP %d).", resp.StatusCode)})
-			return
-		}
-
-		var vtResp VirusTotalResponse
-		json.NewDecoder(resp.Body).Decode(&vtResp)
-		stats := vtResp.Data.Attributes.LastAnalysisStats
-		msg := fmt.Sprintf("[🛡️ VT INTEL] Score: %d Maliciosos | %d Sospechosos | %d Limpios", stats.Malicious, stats.Suspicious, stats.Harmless)
-		json.NewEncoder(w).Encode(map[string]interface{}{"message": msg, "malicious": stats.Malicious})
-	})
-
+	http.HandleFunc("/api/soar/enrich", handleAPIEnrich)
 	http.HandleFunc("/api/soar/block-ip", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		var req BlockRequest
-		json.NewDecoder(r.Body).Decode(&req)
-
-		if req.IP != "" {
-			parsedIP := net.ParseIP(req.IP)
-			if parsedIP == nil {
-				http.Error(w, "Invalid IP Format", http.StatusBadRequest)
-				return
-			}
-			safeIP := parsedIP.String()
-
-			soarMutex.Lock()
-			blockedIPs[safeIP] = true
-			soarMutex.Unlock()
-
-			ruleNameIn := fmt.Sprintf("TR3YES_BLOCK_IN_%s", safeIP)
-			ruleNameOut := fmt.Sprintf("TR3YES_BLOCK_OUT_%s", safeIP)
-
-			exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameIn, "dir=in", "action=block", "remoteip="+safeIP).Run() //NOSONAR
-			exec.Command(netshPath, "advfirewall", "firewall", "add", "rule", "name="+ruleNameOut, "dir=out", "action=block", "remoteip="+safeIP).Run() //NOSONAR
-		}
-
-		lista := leerIncidentes(dbPath)
-		for i, ev := range lista {
-			if ev.ID == req.ID || (req.IP != "" && strings.Contains(ev.Description, req.IP)) {
-				lista[i].Status = "SOAR_BLOQUEADO"
-				if !strings.Contains(lista[i].Description, "[FW NATIVO]") {
-					lista[i].Description = "[FW NATIVO] " + lista[i].Description
-				}
-			}
-		}
-		escribirIncidentes(dbPath, lista)
-		w.WriteHeader(http.StatusOK)
+		handleAPIBlock(w, r, dbPath)
 	})
-
 	http.HandleFunc("/api/event/status", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		var req StatusRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		lista := leerIncidentes(dbPath)
-		for i, ev := range lista {
-			if ev.ID == req.ID {
-				lista[i].Status = req.Status
-			}
-		}
-		escribirIncidentes(dbPath, lista)
-		w.WriteHeader(http.StatusOK)
+		handleAPIStatus(w, r, dbPath)
 	})
-
 	http.HandleFunc("/api/event/delete", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		var req DeleteRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		lista := leerIncidentes(dbPath)
-		var nuevaLista []Incidente
-		for _, ev := range lista {
-			if ev.ID != req.ID {
-				nuevaLista = append(nuevaLista, ev)
-			}
-		}
-		escribirIncidentes(dbPath, nuevaLista)
-		w.WriteHeader(http.StatusOK)
+		handleAPIDelete(w, r, dbPath)
 	})
-
 	http.HandleFunc("/api/events/clear", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		conexionesVistas = make(map[string]bool)
-		tsharkVistos = make(map[string]bool)
-		escribirIncidentes(dbPath, []Incidente{})
-		w.WriteHeader(http.StatusOK)
+		handleAPIClear(w, r, dbPath)
 	})
-
 	http.HandleFunc("/api/engine/toggle", func(w http.ResponseWriter, r *http.Request) {
-		aplicarCabeceras(w, r)
-		if !validarSesion(r, serverToken) || !validarCSRF(r, csrfToken) || r.Method != http.MethodPost {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
-		}
-		var engineMu sync.Mutex
-		engineMu.Lock()
-		var enginePaused bool
-		enginePaused = !enginePaused
-		p := enginePaused
-		engineMu.Unlock()
-		w.Header().Set(headerContentType, "application/json")
-		json.NewEncoder(w).Encode(EngineToggleResponse{Paused: p})
+		handleAPIToggle(w, r, engineMu, enginePaused)
 	})
 }
 
@@ -1003,7 +1033,7 @@ func main() {
 	go monitorearTshark(dbPath, &enginePaused, &engineMu)
 	go monitorearTcpdump(dbPath, &enginePaused, &engineMu)
 
-	configurarRutasHTTP(dbPath)
+	configurarRutasHTTP(dbPath, &engineMu, &enginePaused)
 
 	tlsCert := generarCertificadoTLS()
 	server := &http.Server{
