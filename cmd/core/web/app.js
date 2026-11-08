@@ -248,7 +248,7 @@ async function soarBlockIP() {
         return; 
     }
     const ipToBlock = ipElem.textContent;
-    if (!confirm('[SOAR] ¿Bloquear ' + ipToBlock + ' cortando su acceso nativo em Windows Firewall?')) return;
+    if (!confirm('[SOAR] ¿Bloquear ' + ipToBlock + ' cortando su acceso nativo en Windows Firewall?')) return;
     
     const statusMsg = document.getElementById('soar-status-msg');
     if (statusMsg) {

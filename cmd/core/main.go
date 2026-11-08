@@ -104,7 +104,7 @@ var (
 	tsharkVistos     = make(map[string]bool)
 )
 
-func registrarIncidente(dbPath string, inc Incidente) {
+func registrarIncidente(dbPath, linea string, inc Incidente) {
 	soarMutex.Lock()
 	for ip := range blockedIPs {
 		if strings.Contains(inc.Description, ip) {
@@ -208,7 +208,7 @@ func procesarLineaConexionRed(dbPath, linea string) {
 			if len(nombres) > 0 {
 				dominio = strings.TrimRight(nombres[0], ".")
 			}
-			registrarIncidente(dbPath, Incidente{
+			registrarIncidente(dbPath, linea, Incidente{
 				ID:          generarIDUnico(),
 				Timestamp:   time.Now().Format(time.RFC3339),
 				Source:      "Host-Sensor",
@@ -271,7 +271,8 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 		if p {
 			continue
 		}
-		campos := strings.Fields(scanner.Text())
+		lineaTxt := scanner.Text()
+		campos := strings.Fields(lineaTxt)
 		if len(campos) >= 2 {
 			ipDest := campos[0]
 			urlDominio := campos[1]
@@ -281,7 +282,7 @@ func monitorearTshark(dbPath string, paused *bool, mu *sync.Mutex) {
 			llaveUnica := ipDest + "-" + urlDominio
 			if !tsharkVistos[llaveUnica] {
 				tsharkVistos[llaveUnica] = true
-				registrarIncidente(dbPath, Incidente{ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Tshark", EventType: "Intercepción HTTPS (SNI)", MitreID: "T1071.001 (Application Layer Protocol)", Description: fmt.Sprintf("[TSHARK] Petición TLS detectada hacia el dominio: %s (IP Destino: %s)", urlDominio, ipDest), Status: "Nuevo"})
+				registrarIncidente(dbPath, lineaTxt, Incidente{ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Tshark", EventType: "Intercepción HTTPS (SNI)", MitreID: "T1071.001 (Application Layer Protocol)", Description: fmt.Sprintf("[TSHARK] Petición TLS detectada hacia el dominio: %s (IP Destino: %s)", urlDominio, ipDest), Status: "Nuevo"})
 			}
 		}
 	}
@@ -325,7 +326,7 @@ func monitorearTcpdump(dbPath string, paused *bool, mu *sync.Mutex) {
 			if len(linea) < longitudMaxima {
 				longitudMaxima = len(linea)
 			}
-			registrarIncidente(dbPath, Incidente{ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Tcpdump", EventType: "Captura de Paquete en Crudo", MitreID: "T1040 (Network Sniffing)", Description: fmt.Sprintf("[TCPDUMP RAW] %s", linea[:longitudMaxima]), Status: "Nuevo"})
+			registrarIncidente(dbPath, linea, Incidente{ID: generarIDUnico(), Timestamp: time.Now().Format(time.RFC3339), Source: "Tcpdump", EventType: "Captura de Paquete en Crudo", MitreID: "T1040 (Network Sniffing)", Description: fmt.Sprintf("[TCPDUMP RAW] %s", linea[:longitudMaxima]), Status: "Nuevo"})
 		}
 	}
 }
