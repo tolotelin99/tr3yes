@@ -143,7 +143,7 @@ const indexHTML = `<!DOCTYPE html>
 ████████╗██████╗ ██████╗ ██╗   ██╗███████╗███████╗
 ╚══██╔══╝██╔══██╗╚════██╗╚██╗ ██╔╝██╔════╝██╔════╝
    ██║   ██████╔╝ █████╔╝ ╚████╔╝ █████╗  ███████╗
-   ██║   ██╔══██╗ ╚═══██╗  ╚██╔╝  ██╔══╝  ╚════██║
+   ██║   ██╔══██╗ ╚╚══██╗  ╚██╔╝  ██╔══╝  ╚██████║
    ██║   ██║  ██║██████╔╝   ██║   ███████╗███████║
    ╚═╝   ╚═╝  ╚═╝╚═════╝    ╚═╝   ╚══════╝╚══════╝
             </pre>
@@ -535,7 +535,7 @@ func generarIDUnico() string {
 	return hex.EncodeToString(b)
 }
 
-func procesarLineaConexionRed(dbPath string, linea string) {
+func procesarLineaConexionRed(dbPath, linea string) {
 	campos := strings.Fields(linea)
 	if len(campos) < 4 || !strings.Contains(linea, "ESTABLISHED") {
 		return
