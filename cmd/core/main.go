@@ -2,14 +2,11 @@ package main
 
 import (
 	"bufio"
-	"crypto/rand"
 	"crypto/subtle"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -28,6 +25,12 @@ type Incidente struct {
 	Description string `json:"description"`
 	Status      string `json:"status"`
 }
+
+const (
+	headerContentType = "Content-Type"
+	contentTypeHTML   = "text/html; charset=utf-8"
+	contentTypeJSON   = "application/json; charset=utf-8"
+)
 
 var (
 	dbMutex     sync.Mutex
@@ -72,7 +75,7 @@ func main() {
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set(headerContentType, contentTypeHTML)
 		if loginBytes, err := staticFiles.ReadFile("static/login.html"); err == nil {
 			w.Write(loginBytes)
 		}
@@ -85,7 +88,7 @@ func main() {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set(headerContentType, contentTypeHTML)
 		if indexBytes, err := staticFiles.ReadFile("static/index.html"); err == nil {
 			w.Write(indexBytes)
 		}
@@ -93,7 +96,7 @@ func main() {
 
 	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		aplicarCabeceras(w)
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set(headerContentType, contentTypeJSON)
 		json.NewEncoder(w).Encode(leerIncidentes(dbPath))
 	})
 
