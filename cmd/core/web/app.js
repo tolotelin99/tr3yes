@@ -33,64 +33,23 @@ if (searchBox) {
     searchBox.addEventListener('input', renderTable);
 }
 
-function renderTable() {
-    const queryInput = document.getElementById('search-box');
-    const query = queryInput ? queryInput.value.toLowerCase().trim() : '';
-    const tbody = document.getElementById('events-body');
-    if (!tbody) return;
-    tbody.textContent = '';
-
-    if (allEvents.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #fbbf24; padding: 20px;">[!] SENSORES ACTIVOS. ESPERANDO TRÁFICO REAL...</td></tr>';
-        const ctTotal = document.getElementById('count-total');
-        const ctTcp = document.getElementById('count-tcpdump');
-        const ctTshark = document.getElementById('count-tshark');
-        const ctHost = document.getElementById('count-host');
-        if (ctTotal) ctTotal.textContent = '0';
-        if (ctTcp) ctTcp.textContent = '0';
-        if (ctTshark) ctTshark.textContent = '0';
-        if (ctHost) ctHost.textContent = '0';
-        return;
-    }
-
-    let cHost = 0, cTshark = 0, cTcpdump = 0;
-    allEvents.forEach(ev => {
-        if (ev.source === 'Host-Sensor') cHost++;
-        if (ev.source === 'Tshark') cTshark++;
-        if (ev.source === 'Tcpdump') cTcpdump++;
-    });
-
+function updateKpiCounters(total, host, tshark, tcpdump) {
     const ctTotal = document.getElementById('count-total');
     const ctHostElem = document.getElementById('count-host');
     const ctTsharkElem = document.getElementById('count-tshark');
     const ctTcpElem = document.getElementById('count-tcpdump');
-    if (ctTotal) ctTotal.textContent = String(allEvents.length);
-    if (ctHostElem) ctHostElem.textContent = String(cHost);
-    if (ctTsharkElem) ctTsharkElem.textContent = String(cTshark);
-    if (ctTcpElem) ctTcpElem.textContent = String(cTcpdump);
+    if (ctTotal) ctTotal.textContent = String(total);
+    if (ctHostElem) ctHostElem.textContent = String(host);
+    if (ctTsharkElem) ctTsharkElem.textContent = String(tshark);
+    if (ctTcpElem) ctTcpElem.textContent = String(tcpdump);
+}
 
-    const filtered = allEvents.slice().reverse().filter(ev => {
-        let matchFilter = true;
-        if (currentFilter === 'Host-Sensor' || currentFilter === 'Tshark' || currentFilter === 'Tcpdump') { 
-            matchFilter = (ev.source === currentFilter); 
-        } else if (currentFilter === 'Nuevo' || currentFilter === 'Falso Positivo') { 
-            matchFilter = (ev.status === currentFilter); 
-        }
-        const text = (ev.timestamp + ' ' + ev.source + ' ' + ev.event_type + ' ' + ev.mitre_id + ' ' + ev.description).toLowerCase();
-        return matchFilter && text.includes(query);
-    });
-
-    if (filtered.length === 0) { 
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 20px;">[!] NO GREP MATCH FOUND.</td></tr>'; 
-        return; 
-    }
-
+function renderTableRows(filtered, tbody) {
     filtered.slice(0, 100).forEach(ev => {
         const tr = document.createElement('tr');
-        
         const tdNum = document.createElement('td');
         tdNum.textContent = String(allEvents.indexOf(ev) + 1);
-        tdNum.style.color = '#64748b';
+        tdNum.style.color = '#8b949e';
         tdNum.style.fontWeight = 'bold';
 
         const tdTime = document.createElement('td'); 
@@ -152,6 +111,47 @@ function renderTable() {
     });
 }
 
+function renderTable() {
+    const queryInput = document.getElementById('search-box');
+    const query = queryInput ? queryInput.value.toLowerCase().trim() : '';
+    const tbody = document.getElementById('events-body');
+    if (!tbody) return;
+    tbody.textContent = '';
+
+    if (allEvents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #d29922; padding: 20px;">[!] SENSORES ACTIVOS. ESPERANDO TRÁFICO REAL...</td></tr>';
+        updateKpiCounters(0, 0, 0, 0);
+        return;
+    }
+
+    let cHost = 0, cTshark = 0, cTcpdump = 0;
+    allEvents.forEach(ev => {
+        if (ev.source === 'Host-Sensor') cHost++;
+        if (ev.source === 'Tshark') cTshark++;
+        if (ev.source === 'Tcpdump') cTcpdump++;
+    });
+
+    updateKpiCounters(allEvents.length, cHost, cTshark, cTcpdump);
+
+    const filtered = allEvents.slice().reverse().filter(ev => {
+        let matchFilter = true;
+        if (currentFilter === 'Host-Sensor' || currentFilter === 'Tshark' || currentFilter === 'Tcpdump') { 
+            matchFilter = (ev.source === currentFilter); 
+        } else if (currentFilter === 'Nuevo' || currentFilter === 'Falso Positivo') { 
+            matchFilter = (ev.status === currentFilter); 
+        }
+        const text = (ev.timestamp + ' ' + ev.source + ' ' + ev.event_type + ' ' + ev.mitre_id + ' ' + ev.description).toLowerCase();
+        return matchFilter && text.includes(query);
+    });
+
+    if (filtered.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #8b949e; padding: 20px;">[!] NO GREP MATCH FOUND.</td></tr>'; 
+        return; 
+    }
+
+    renderTableRows(filtered, tbody);
+}
+
 function analyzeIPsInText(text) {
     const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
     const matches = text.match(ipRegex);
@@ -160,13 +160,13 @@ function analyzeIPsInText(text) {
     let intelHtml = "";
     matches.forEach(ip => {
         let type = "Pública (Externa / Internet)"; 
-        let color = "#fb7185";
+        let color = "#ff7b72";
         if (ip.startsWith("127.") || ip === "0.0.0.0") { 
             type = "Loopback (Tráfico de tu misma PC)"; 
-            color = "#00ff66"; 
+            color = "#3fb950"; 
         } else if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.match(/^172\.(1[6-9]|2\d|3[0-1])\./)) { 
             type = "Red Privada (LAN Local / Router)"; 
-            color = "#38bdf8"; 
+            color = "#58a6ff"; 
         }
         intelHtml += '<div style="margin-bottom: 4px;"><b>IP:</b> <code style="color:' + color + ';" id="target-ip">' + ip + '</code> -> ' + type + '</div>';
     });
@@ -211,7 +211,7 @@ async function soarEnrichIP() {
     
     const targetIP = ipElem.textContent;
     if (statusMsg) {
-        statusMsg.style.color = '#38bdf8';
+        statusMsg.style.color = '#58a6ff';
         statusMsg.textContent = '[⏳ SOAR] Consultando API de VirusTotal para ' + targetIP + '...';
     }
 
@@ -221,21 +221,21 @@ async function soarEnrichIP() {
             const data = await res.json();
             if (statusMsg) {
                 if (data.error) { 
-                    statusMsg.style.color = '#fbbf24'; 
+                    statusMsg.style.color = '#d29922'; 
                     statusMsg.textContent = '[!] ' + data.error; 
                 } else { 
                     const maliciousCount = Number.parseInt(String(data.malicious || 0), 10);
-                    statusMsg.style.color = maliciousCount > 0 ? '#f87171' : '#00ff66'; 
-                    statusMsg.innerHTML = data.message + ' <a href="https://www.virustotal.com/gui/ip-address/' + targetIP + '" target="_blank" style="color:#38bdf8; text-decoration:underline;">[Ver Reporte]</a>'; 
+                    statusMsg.style.color = maliciousCount > 0 ? '#ff7b72' : '#3fb950'; 
+                    statusMsg.innerHTML = data.message + ' <a href="https://www.virustotal.com/gui/ip-address/' + targetIP + '" target="_blank" style="color:#58a6ff; text-decoration:underline;">[Ver Reporte]</a>'; 
                 }
             }
         } else if (statusMsg) { 
-            statusMsg.style.color = '#f87171'; 
+            statusMsg.style.color = '#ff7b72'; 
             statusMsg.textContent = '[!] Error HTTP al conectar con el backend SOAR.'; 
         }
     } catch (e) { 
         if (statusMsg) {
-            statusMsg.style.color = '#f87171'; 
+            statusMsg.style.color = '#ff7b72'; 
             statusMsg.textContent = '[!] Fallo de red interno.'; 
         }
     }
@@ -252,7 +252,7 @@ async function soarBlockIP() {
     
     const statusMsg = document.getElementById('soar-status-msg');
     if (statusMsg) {
-        statusMsg.style.color = '#38bdf8';
+        statusMsg.style.color = '#58a6ff';
         statusMsg.textContent = '[⏳ SOAR] Creando regla Drop en Windows Firewall...';
     }
     
@@ -260,17 +260,17 @@ async function soarBlockIP() {
         const res = await secureFetch('/api/soar/block-ip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip: ipToBlock, id: currentEvent ? currentEvent.id : '' }) });
         if (res.ok) {
             if (statusMsg) {
-                statusMsg.style.color = '#f87171';
+                statusMsg.style.color = '#ff7b72';
                 statusMsg.textContent = '[🚫 SOAR] IP ' + ipToBlock + ' bloqueada nativamente y añadida a la Blacklist HIDS.';
             }
             setTimeout(() => { closeModal(); void fetchEvents(); }, 1800);
         } else if (statusMsg) { 
-            statusMsg.style.color = '#fbbf24'; 
+            statusMsg.style.color = '#d29922'; 
             statusMsg.textContent = '[!] Error en el backend. Revisa la terminal.'; 
         }
     } catch (err) {
         if (statusMsg) {
-            statusMsg.style.color = '#f87171';
+            statusMsg.style.color = '#ff7b72';
             statusMsg.textContent = '[!] Error de conexión al bloquear IP.';
         }
     }

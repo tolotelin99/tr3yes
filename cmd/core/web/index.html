@@ -20,10 +20,10 @@
             <p class="subtitle">> TTY_SESSION: SECURE // SENSORS: HIDS, TSHARK, TCPDUMP(BPF)</p>
         </div>
         <div class="topbar-actions">
-            <button class="btn" id="btn-toggle-engine" onclick="toggleEngine()" style="background: #064e3b; color: #34d399; border-color: #059669;">[ PAUSE ]</button>
-            <button class="btn" onclick="exportEvidence()" style="background: #312e81; color: #818cf8; border-color: #4f46e5;">[ 📥 EXPORT_ALL ]</button>
-            <button class="btn" onclick="togglePanicMode()" style="background: #7f1d1d; color: #fca5a5; border-color: #dc2626;" id="btn-panic">[ 🚨 RED_ALERT ]</button>
-            <div role="status" aria-live="polite" class="badge-live" id="engine-status">[● SENSORS LIVE]</div>
+            <button class="btn" id="btn-toggle-engine" onclick="toggleEngine()" style="background: #113822; color: #3fb950; border-color: #238636;">[ PAUSE ]</button>
+            <button class="btn" onclick="exportEvidence()" style="background: #1f6feb; color: #f0f6fc; border-color: #388bfd;">[ 📥 EXPORT_ALL ]</button>
+            <button class="btn" onclick="togglePanicMode()" style="background: #490202; color: #ff7b72; border-color: #da3633;" id="btn-panic">[ 🚨 RED_ALERT ]</button>
+            <output class="badge-live" id="engine-status">[● SENSORS LIVE]</output>
         </div>
     </header>
 
@@ -37,15 +37,15 @@
     <section class="controls">
         <div style="display: flex; gap: 8px; flex-wrap: wrap; flex: 1;">
             <button class="btn active" data-filter="ALL">ALL</button>
-            <button class="btn" data-filter="Host-Sensor" style="border-color: #34d399;">HOST</button>
-            <button class="btn" data-filter="Tshark" style="border-color: #38bdf8;">TSHARK</button>
-            <button class="btn" data-filter="Tcpdump" style="border-color: #818cf8;">TCPDUMP</button>
-            <button class="btn" data-filter="Nuevo" style="border-color: #fbbf24;">NUEVOS</button>
-            <button class="btn" data-filter="Falso Positivo" style="border-color: #94a3b8;">FP</button>
+            <button class="btn" data-filter="Host-Sensor" style="border-color: #3fb950;">HOST</button>
+            <button class="btn" data-filter="Tshark" style="border-color: #58a6ff;">TSHARK</button>
+            <button class="btn" data-filter="Tcpdump" style="border-color: #a5d6ff;">TCPDUMP</button>
+            <button class="btn" data-filter="Nuevo" style="border-color: #d29922;">NUEVOS</button>
+            <button class="btn" data-filter="Falso Positivo" style="border-color: #8b949e;">FP</button>
             <label for="search-box" style="display:none;">Buscar eventos</label>
             <input type="text" id="search-box" placeholder="grep --filter (IP, estado, MITRE ID)...">
         </div>
-        <button class="btn" onclick="clearAllEvents()" style="background: #450a0a; color: #fca5a5; border-color: #991b1b;">[ 🗑️ PURGE ]</button>
+        <button class="btn" onclick="clearAllEvents()" style="background: #490202; color: #ff7b72; border-color: #da3633;">[ 🗑️ PURGE ]</button>
     </section>
 
     <section class="table-wrap">
@@ -62,7 +62,7 @@
                 </tr>
             </thead>
             <tbody id="events-body">
-                <tr><td colspan="7" style="text-align: center; color: #38bdf8; padding: 20px;">INICIALIZANDO TRIPLE SENSOR DE RED...</td></tr>
+                <tr><td colspan="7" style="text-align: center; color: #58a6ff; padding: 20px;">INICIALIZANDO TRIPLE SENSOR DE RED...</td></tr>
             </tbody>
         </table>
     </section>
@@ -70,25 +70,25 @@
     <div id="modal-detail" class="modal">
         <div class="modal-content">
             <button type="button" class="close" onclick="closeModal()" aria-label="Cerrar ventana">&times;</button>
-            <h2 style="color: #00ff66; margin-bottom: 8px; font-size: 15px; text-transform: uppercase;">[ REAL_TIME_FORENSIC_CONSOLE ]</h2>
+            <h2 style="color: #3fb950; margin-bottom: 8px; font-size: 15px; text-transform: uppercase;">[ REAL_TIME_FORENSIC_CONSOLE ]</h2>
             
-            <div style="font-size: 10.5px; color: #38bdf8; margin-bottom: 4px; font-weight: bold;">RAW PAYLOAD JSON:</div>
-            <pre id="modal-text" style="background: #030712; padding: 8px; border-radius: 2px; border: 1px solid #1e293b; color: #00ff66; overflow-x: auto; font-size: 11px; max-height: 120px; margin-bottom: 10px;"></pre>
+            <div style="font-size: 10.5px; color: #58a6ff; margin-bottom: 4px; font-weight: bold;">RAW PAYLOAD JSON:</div>
+            <pre id="modal-text" style="background: #010409; padding: 8px; border-radius: 2px; border: 1px solid #30363d; color: #3fb950; overflow-x: auto; font-size: 11px; max-height: 120px; margin-bottom: 10px;"></pre>
             
-            <div style="font-size: 10.5px; color: #fbbf24; margin-bottom: 4px; font-weight: bold;">IP INTEL & ORIGIN ANALYSIS:</div>
-            <div id="modal-ip-intel" style="background: #030712; padding: 8px; border-radius: 2px; border: 1px solid #1e293b; color: #f8fafc; font-size: 11px; margin-bottom: 10px; line-height: 1.3;"></div>
+            <div style="font-size: 10.5px; color: #d29922; margin-bottom: 4px; font-weight: bold;">IP INTEL & ORIGIN ANALYSIS:</div>
+            <div id="modal-ip-intel" style="background: #010409; padding: 8px; border-radius: 2px; border: 1px solid #30363d; color: #f0f6fc; font-size: 11px; margin-bottom: 10px; line-height: 1.3;"></div>
 
-            <div style="font-size: 10.5px; color: #34d399; margin-bottom: 4px; font-weight: bold;">MITRE ATT&CK PLAYBOOK & REMEDIATION:</div>
-            <div id="modal-mitre-guide" style="background: #030712; padding: 8px; border-radius: 2px; border: 1px solid #1e293b; color: #e2e8f0; font-size: 11px; margin-bottom: 12px; line-height: 1.3;"></div>
+            <div style="font-size: 10.5px; color: #3fb950; margin-bottom: 4px; font-weight: bold;">MITRE ATT&CK PLAYBOOK & REMEDIATION:</div>
+            <div id="modal-mitre-guide" style="background: #010409; padding: 8px; border-radius: 2px; border: 1px solid #30363d; color: #f0f6fc; font-size: 11px; margin-bottom: 12px; line-height: 1.3;"></div>
 
-            <div style="border-top: 1px dashed #1e293b; padding-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center;">
+            <div style="border-top: 1px dashed #30363d; padding-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button class="btn" onclick="soarEnrichIP()" style="background: #0c4a6e; color: #38bdf8; border-color: #0284c7;">[ 🔍 VIRUSTOTAL INTEL ]</button>
-                    <button class="btn" onclick="soarBlockIP()" style="background: #450a0a; color: #fca5a5; border-color: #b91c1c;">[ 🚫 SOAR: NATIVE FIREWALL BLOCK ]</button>
+                    <button class="btn" onclick="soarEnrichIP()" style="background: #1f6feb; color: #f0f6fc; border-color: #388bfd;">[ 🔍 VIRUSTOTAL INTEL ]</button>
+                    <button class="btn" onclick="soarBlockIP()" style="background: #490202; color: #ff7b72; border-color: #da3633;">[ 🚫 SOAR: NATIVE FIREWALL BLOCK ]</button>
                 </div>
-                <button class="btn" onclick="exportSingleEvent()" style="background: #312e81; color: #818cf8; border-color: #4f46e5;">[ 📥 EXPORT_LOG ]</button>
+                <button class="btn" onclick="exportSingleEvent()" style="background: #1f6feb; color: #f0f6fc; border-color: #388bfd;">[ 📥 EXPORT_LOG ]</button>
             </div>
-            <div id="soar-status-msg" style="margin-top: 8px; font-size: 11px; color: #00ff66; min-height: 15px;"></div>
+            <div id="soar-status-msg" style="margin-top: 8px; font-size: 11px; color: #3fb950; min-height: 15px;"></div>
         </div>
     </div>
     <script src="/app.js"></script>
